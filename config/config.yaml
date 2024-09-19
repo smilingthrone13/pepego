@@ -1,0 +1,4 @@
+is_debug: true
+getter_cooldown: 10s
+request_timeout: 10s
+images_dir_path: "./images"
