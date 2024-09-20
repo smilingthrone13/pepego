@@ -13,6 +13,7 @@ import (
 type Config struct {
 	IsDebug        bool          `yaml:"is_debug"`
 	ApiKey         string        `yaml:"api_key"`
+	DBPath         string        `yaml:"db_path"`
 	GetterCooldown time.Duration `yaml:"getter_cooldown"`
 	ImagesDirPath  string        `yaml:"images_dir_path"`
 	RequestTimeout time.Duration `yaml:"request_timeout"`
@@ -78,7 +79,8 @@ func (c *Config) loadEnv(filePath string) error {
 		return err
 	}
 
-	c.ApiKey = os.Getenv("BOT_TOKEN")
+	c.ApiKey = os.Getenv("api_key")
+	c.DBPath = os.Getenv("db_path")
 
 	return nil
 }
@@ -86,6 +88,12 @@ func (c *Config) loadEnv(filePath string) error {
 func (c *Config) validate() error {
 	if c.ApiKey == "" {
 		err := errors.New("api_key is required")
+
+		return err
+	}
+
+	if c.DBPath == "" {
+		err := errors.New("db_path is required")
 
 		return err
 	}

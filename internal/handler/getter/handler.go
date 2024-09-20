@@ -2,6 +2,7 @@ package getter
 
 import (
 	"apubot/internal/config"
+	"apubot/internal/domain"
 	"apubot/internal/service/image"
 	"context"
 	"fmt"
@@ -14,14 +15,14 @@ import (
 type (
 	Handler struct {
 		cfg      *config.Config
-		Services Services
+		Services *Services
 	}
 	Services struct {
 		Image image.ImageService
 	}
 )
 
-func New(cfg *config.Config, services Services) *Handler {
+func New(cfg *config.Config, services *Services) *Handler {
 	return &Handler{
 		cfg:      cfg,
 		Services: services,
@@ -29,12 +30,16 @@ func New(cfg *config.Config, services Services) *Handler {
 }
 
 func (h *Handler) HandleGetCommand(ctx context.Context, bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
-	attachment, err := h.createAttachment(ctx, message.Chat.ID)
+	file := h.Services.Image.GetRandomFile(ctx)
+
+	attachment, err := h.createAttachment(file, message.Chat.ID)
 	if err != nil {
 		log.Printf("Error creating attachment: %v", err)
+
+		return
 	}
 
-	_, err = bot.Send(attachment)
+	res, err := bot.Send(attachment)
 	if err != nil {
 		log.Printf("Error sending attachment: %v", err)
 
@@ -44,30 +49,72 @@ func (h *Handler) HandleGetCommand(ctx context.Context, bot *tgbotapi.BotAPI, me
 		if err != nil {
 			log.Printf("Error sending message: %v", err)
 		}
+
+		return
 	}
-}
 
-func (h *Handler) createAttachment(ctx context.Context, chatId int64) (tgbotapi.Chattable, error) {
-	var attachment tgbotapi.Chattable
-	var err error
+	_ = res
 
-	file := h.Services.Image.GetRandomFile(ctx)
-	fullFilePath := path.Join(h.cfg.ImagesDirPath, file.Name)
+	if file.TgID != "" {
+		return
+	}
+
+	var newTgId string
 
 	switch filepath.Ext(file.Name) {
 	case ".jpg", ".jpeg", ".png":
-		attachment = tgbotapi.NewPhoto(
-			chatId,
-			tgbotapi.FilePath(fullFilePath),
-		)
+		if res.Photo == nil || len(res.Photo) == 0 {
+			log.Println("Photo is nil in response!")
+
+			return
+		}
+
+		maxSizedImage := res.Photo[len(res.Photo)-1]
+		newTgId = maxSizedImage.FileID
 	case ".gif":
-		attachment = tgbotapi.NewDocument(
-			chatId,
-			tgbotapi.FilePath(fullFilePath),
-		)
+		if res.Animation == nil {
+			log.Println("Animation is nil in response!")
+
+			return
+		}
+
+		newTgId = res.Animation.FileID
+	default:
+		log.Printf("Unsupported image format: %v", filepath.Ext(file.Name))
+	}
+
+	if newTgId == "" {
+		log.Println("No new TG ID in response!")
+
+		return
+	}
+
+	updInp := domain.File{Name: file.Name, TgID: newTgId}
+
+	err = h.Services.Image.UpdateFile(ctx, updInp)
+	if err != nil {
+		log.Printf("Error updating file: %v", err)
+	}
+}
+
+func (h *Handler) createAttachment(file domain.File, chatId int64) (a tgbotapi.Chattable, err error) {
+	var reqFile tgbotapi.RequestFileData
+
+	if file.TgID == "" {
+		fullFilePath := path.Join(h.cfg.ImagesDirPath, file.Name)
+		reqFile = tgbotapi.FilePath(fullFilePath)
+	} else {
+		reqFile = tgbotapi.FileID(file.TgID)
+	}
+
+	switch filepath.Ext(file.Name) {
+	case ".jpg", ".jpeg", ".png":
+		a = tgbotapi.NewPhoto(chatId, reqFile)
+	case ".gif":
+		a = tgbotapi.NewDocument(chatId, reqFile)
 	default:
 		err = fmt.Errorf("unsupported image format: %v", filepath.Ext(file.Name))
 	}
 
-	return attachment, err
+	return a, err
 }

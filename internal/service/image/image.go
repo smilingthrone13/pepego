@@ -30,7 +30,7 @@ func New(cfg *config.Config, repo ImageRepository) *Service {
 
 	err := service.updateAvailableFiles()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("can not initialize Image service: %v", err)
 	}
 
 	return service

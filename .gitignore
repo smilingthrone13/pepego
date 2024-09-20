@@ -26,3 +26,6 @@ config/.env
 
 # IDE configs folder
 .idea
+
+# SQLite DB file
+*.sqlite
