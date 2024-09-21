@@ -104,7 +104,7 @@ func (a *App) handleUpdate(update *tgbotapi.Update) {
 		if waitTime > 0 {
 			msg := tgbotapi.NewMessage(
 				update.Message.Chat.ID,
-				fmt.Sprintf("Wait %v seconds before using command again", a.cfg.GetterCooldown),
+				fmt.Sprintf("Command on cooldown for %v sec", int(waitTime.Seconds())),
 			)
 
 			_, err := a.bot.Send(msg)
@@ -118,7 +118,8 @@ func (a *App) handleUpdate(update *tgbotapi.Update) {
 
 	switch update.Message.Command() {
 	case "peepo":
-		go a.handlers.Getter.HandleGetCommand(context.Background(), a.bot, update.Message) // todo: add context timeout?
+		ctx := context.Background() // todo: add context timeout?
+		go a.handlers.Getter.HandleGetCommand(ctx, a.bot, update.Message)
 	default:
 		_, err := a.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Unknown command"))
 		if err != nil {

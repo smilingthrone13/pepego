@@ -1,0 +1,12 @@
+services:
+  bot:
+    container_name: peepobot
+    image: smilingthrone13/peepobot:latest
+    volumes:
+      - ./config:/app/config
+      - ./resources/images:/app/resources/images
+      - db-data:/app/resources/db
+    restart: unless-stopped
+
+volumes:
+  db-data:

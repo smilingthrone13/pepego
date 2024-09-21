@@ -22,10 +22,13 @@ go.work
 go.work.sum
 
 # env file
-config/.env
+*.env
 
 # IDE configs folder
 .idea
 
 # SQLite DB file
 *.sqlite
+
+# Resources folders
+resources

@@ -1,0 +1,6 @@
+.git
+.idea
+**/resources
+*.env
+*.yaml
+*.sqlite

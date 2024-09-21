@@ -53,8 +53,6 @@ func (h *Handler) HandleGetCommand(ctx context.Context, bot *tgbotapi.BotAPI, me
 		return
 	}
 
-	_ = res
-
 	if file.TgID != "" {
 		return
 	}
