@@ -6,7 +6,7 @@ import (
 )
 
 type ImageService interface {
-	GetRandomFile(ctx context.Context) (file domain.File)
+	GetRandomFile(ctx context.Context) (domain.File, error)
 	UpdateFile(ctx context.Context, file domain.File) error
 }
 

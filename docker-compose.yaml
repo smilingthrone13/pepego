@@ -4,9 +4,5 @@ services:
     image: smilingthrone13/peepobot:latest
     volumes:
       - ./config:/app/config
-      - ./resources/images:/app/resources/images
-      - db-data:/app/resources/db
+      - ./resources:/app/resources
     restart: unless-stopped
-
-volumes:
-  db-data:

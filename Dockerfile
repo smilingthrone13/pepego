@@ -14,7 +14,7 @@ WORKDIR /app/cmd
 
 RUN CGO_ENABLED=1 GOOS=linux go build -o pepobot main.go
 
-FROM alpine:latest AS compose-stage
+FROM alpine:latest AS release-stage
 
 WORKDIR /app
 

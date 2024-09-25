@@ -30,7 +30,12 @@ func New(cfg *config.Config, services *Services) *Handler {
 }
 
 func (h *Handler) HandleGetCommand(ctx context.Context, bot *tgbotapi.BotAPI, message *tgbotapi.Message) {
-	file := h.Services.Image.GetRandomFile(ctx)
+	file, err := h.Services.Image.GetRandomFile(ctx)
+	if err != nil {
+		log.Printf("Error getting file: %v", err)
+
+		return
+	}
 
 	attachment, err := h.createAttachment(file, message.Chat.ID)
 	if err != nil {
@@ -53,10 +58,34 @@ func (h *Handler) HandleGetCommand(ctx context.Context, bot *tgbotapi.BotAPI, me
 		return
 	}
 
-	if file.TgID != "" {
-		return
+	if file.TgID == "" {
+		h.updateFile(ctx, file, res)
+	}
+}
+
+func (h *Handler) createAttachment(file domain.File, chatId int64) (a tgbotapi.Chattable, err error) {
+	var reqFile tgbotapi.RequestFileData
+
+	if file.TgID == "" {
+		fullFilePath := path.Join(h.cfg.ImagesDirPath, file.Name)
+		reqFile = tgbotapi.FilePath(fullFilePath)
+	} else {
+		reqFile = tgbotapi.FileID(file.TgID)
 	}
 
+	switch filepath.Ext(file.Name) {
+	case ".jpg", ".jpeg", ".png":
+		a = tgbotapi.NewPhoto(chatId, reqFile)
+	case ".gif":
+		a = tgbotapi.NewDocument(chatId, reqFile)
+	default:
+		err = fmt.Errorf("unsupported image format: %v", filepath.Ext(file.Name))
+	}
+
+	return a, err
+}
+
+func (h *Handler) updateFile(ctx context.Context, file domain.File, res tgbotapi.Message) {
 	var newTgId string
 
 	switch filepath.Ext(file.Name) {
@@ -89,30 +118,8 @@ func (h *Handler) HandleGetCommand(ctx context.Context, bot *tgbotapi.BotAPI, me
 
 	updInp := domain.File{Name: file.Name, TgID: newTgId}
 
-	err = h.Services.Image.UpdateFile(ctx, updInp)
+	err := h.Services.Image.UpdateFile(ctx, updInp)
 	if err != nil {
 		log.Printf("Error updating file: %v", err)
 	}
-}
-
-func (h *Handler) createAttachment(file domain.File, chatId int64) (a tgbotapi.Chattable, err error) {
-	var reqFile tgbotapi.RequestFileData
-
-	if file.TgID == "" {
-		fullFilePath := path.Join(h.cfg.ImagesDirPath, file.Name)
-		reqFile = tgbotapi.FilePath(fullFilePath)
-	} else {
-		reqFile = tgbotapi.FileID(file.TgID)
-	}
-
-	switch filepath.Ext(file.Name) {
-	case ".jpg", ".jpeg", ".png":
-		a = tgbotapi.NewPhoto(chatId, reqFile)
-	case ".gif":
-		a = tgbotapi.NewDocument(chatId, reqFile)
-	default:
-		err = fmt.Errorf("unsupported image format: %v", filepath.Ext(file.Name))
-	}
-
-	return a, err
 }

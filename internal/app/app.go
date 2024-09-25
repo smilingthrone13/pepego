@@ -91,6 +91,8 @@ func (a *App) Run() {
 }
 
 func (a *App) handleUpdate(update *tgbotapi.Update) {
+	var err error
+
 	if update.Message == nil {
 		return
 	}
@@ -117,14 +119,17 @@ func (a *App) handleUpdate(update *tgbotapi.Update) {
 	}
 
 	switch update.Message.Command() {
+	case "start":
+		msgText := "Welcome to peepobot. Now you can use any available command."
+		_, err = a.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, msgText))
 	case "peepo":
 		ctx := context.Background() // todo: add context timeout?
 		go a.handlers.Getter.HandleGetCommand(ctx, a.bot, update.Message)
 	default:
-		_, err := a.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Unknown command"))
-		if err != nil {
-			log.Printf("Error sending message: %v", err)
-		}
+		_, err = a.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Unknown command"))
+	}
+	if err != nil {
+		log.Printf("Error sending message: %v", err)
 	}
 
 	a.lastUsage.Set(fmt.Sprint(update.Message.Chat.ID), time.Now(), cache.DefaultExpiration)

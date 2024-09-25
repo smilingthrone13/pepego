@@ -75,26 +75,22 @@ func (s *Service) updateAvailableFiles() error {
 	return nil
 }
 
-func (s *Service) GetRandomFile(ctx context.Context) (file domain.File) {
+func (s *Service) GetRandomFile(ctx context.Context) (domain.File, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	n := rand.Intn(len(s.availableFiles))
-	c := 0
 
 	for k, v := range s.availableFiles {
-		if c != n {
-			c++
-
-			continue
+		if n == 0 {
+			return domain.File{Name: k, TgID: v}, nil
 		}
 
-		file = domain.File{Name: k, TgID: v}
-
-		break
+		n--
 	}
 
-	return file
+	// this should never happen
+	return domain.File{}, errors.New("GetRandomFile: no file selected")
 }
 
 func (s *Service) UpdateFile(ctx context.Context, file domain.File) error {
