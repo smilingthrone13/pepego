@@ -4,6 +4,7 @@ import (
 	"apubot/internal/config"
 	"apubot/internal/infrastructure/database"
 	"apubot/internal/infrastructure/repository/image"
+	"apubot/internal/infrastructure/repository/subscriprion"
 )
 
 type (
@@ -13,12 +14,14 @@ type (
 	}
 
 	Repositories struct {
-		Image *image.Repository
+		Image        *image.Repository
+		Subscription *subscriprion.Repository
 	}
 )
 
 func New(p *InitParams) *Repositories {
 	return &Repositories{
-		Image: image.New(p.DB),
+		Image:        image.New(p.DB),
+		Subscription: subscriprion.New(p.DB),
 	}
 }

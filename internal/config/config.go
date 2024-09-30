@@ -20,14 +20,13 @@ type Config struct {
 }
 
 func NewConfig(cfgFolderPath string) (*Config, error) {
-	cfgPath := path.Join(cfgFolderPath, "config.yaml")
-	envPath := path.Join(cfgFolderPath, ".env")
-
 	c := &Config{
 		IsDebug:        false,
 		GetterCooldown: 5 * time.Second,
 		RequestTimeout: 5 * time.Second,
 	}
+
+	cfgPath := path.Join(cfgFolderPath, "config.yaml")
 
 	err := c.loadConfig(cfgPath)
 	if err != nil {
@@ -35,6 +34,12 @@ func NewConfig(cfgFolderPath string) (*Config, error) {
 
 		return nil, err
 	}
+
+	envFileName := "prod.env"
+	if c.IsDebug {
+		envFileName = "dev.env"
+	}
+	envPath := path.Join(cfgFolderPath, envFileName)
 
 	err = c.loadEnv(envPath)
 	if err != nil {
