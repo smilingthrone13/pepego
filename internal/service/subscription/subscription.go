@@ -11,24 +11,21 @@ import (
 	"time"
 )
 
-type Service struct {
-	cfg                  *config.Config
-	repo                 SubscriptionRepository
-	runningSubscriptions map[string]chan struct{} // todo: change to struct with closeChan and lastSentPicID?
-	mu                   sync.RWMutex
-}
+type (
+	Service struct {
+		cfg                  *config.Config
+		repo                 SubscriptionRepository
+		runningSubscriptions map[int64]chan struct{}
+		mu                   sync.RWMutex
+	}
+)
 
 func New(cfg *config.Config, repo SubscriptionRepository) *Service {
 	service := &Service{
 		cfg:                  cfg,
 		repo:                 repo,
-		runningSubscriptions: make(map[string]chan struct{}),
+		runningSubscriptions: make(map[int64]chan struct{}),
 		mu:                   sync.RWMutex{},
-	}
-
-	err := service.scheduleExisting(context.Background())
-	if err != nil {
-		log.Fatalf("can not initialize Subscription service: %v", err)
 	}
 
 	return service
@@ -43,41 +40,84 @@ func (s *Service) getAllFromDB(ctx context.Context) (subs []domain.Subscription,
 	return subs, nil
 }
 
-func (s *Service) scheduleExisting(ctx context.Context) (err error) {
+func (s *Service) startWorker(
+	sub domain.Subscription,
+	exitChan chan struct{},
+	sendFunc func(chatId int64) error,
+) {
+	passedIntervals := time.Since(sub.GetSubscribedAtAsUnixTime()) / sub.GetPeriodAsDuration()
+	nextRun := sub.GetSubscribedAtAsUnixTime().Add((passedIntervals + 1) * sub.GetPeriodAsDuration())
+
+	workerInput := &StartWorkerInput{
+		ChatID:   sub.ChatId,
+		ExitChan: exitChan,
+		Delay:    time.Until(nextRun),
+		Period:   sub.GetPeriodAsDuration(),
+	}
+
+	go s.startSubscription(workerInput, sendFunc)
+}
+
+func (s *Service) startSubscription(
+	inp *StartWorkerInput,
+	sendFunc func(chatId int64) error,
+) {
+	time.Sleep(inp.Delay) // wait to next scheduled event
+
+	// todo: add sent pictures tracker to avoid duplicates, get ids from sendFunc
+
+	err := sendFunc(inp.ChatID)
+	if err != nil {
+		log.Printf("can not send scheduled message from goroutine: %v\n", err)
+	}
+
+	for {
+		select {
+		case <-inp.ExitChan:
+			return
+		case <-time.After(inp.Period):
+			err := sendFunc(inp.ChatID)
+			if err != nil {
+				log.Printf("can not send scheduled message from goroutine: %v\n", err)
+			}
+		}
+	}
+}
+
+func (s *Service) RescheduleExisting(
+	ctx context.Context,
+	sendFunc func(chatId int64) error,
+) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	existingSubs, err := s.getAllFromDB(ctx)
 	if err != nil {
-		return errors.Wrap(err, "can not get existing subscriptions")
+		return errors.Wrap(err, "can not reschedule existing subscriptions")
 	}
+
+	// kill all running subscriptions
+	for _, ch := range s.runningSubscriptions {
+		ch <- struct{}{}
+		close(ch)
+	}
+
+	s.runningSubscriptions = make(map[int64]chan struct{}, len(existingSubs))
 
 	for i := range existingSubs {
 		exitChan := make(chan struct{}, 1)
 
-		// todo: start goroutine
+		go s.startWorker(existingSubs[i], exitChan, sendFunc)
 
 		s.runningSubscriptions[existingSubs[i].ChatId] = exitChan
 	}
 
+	log.Printf("Rescheduled %d existing subscription(s)!", len(s.runningSubscriptions))
+
 	return nil
 }
 
-func (s *Service) startWorker(sub domain.Subscription) {
-	subscribedAd := time.Unix(sub.CreatedAt, 0)
-	timeSinceSubscribe := time.Since(subscribedAd)
-	period := time.Duration(sub.Period) * time.Hour
-	passedIntervals := timeSinceSubscribe / period
-
-	nextRun := subscribedAd.Add((passedIntervals + 1) * period)
-	delay := time.Until(nextRun)
-
-	time.Sleep(delay)
-
-	// todo: start goroutine
-}
-
-func (s *Service) Get(ctx context.Context, chatId string) (sub domain.Subscription, err error) {
+func (s *Service) Get(ctx context.Context, chatId int64) (sub domain.Subscription, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -94,14 +134,19 @@ func (s *Service) Get(ctx context.Context, chatId string) (sub domain.Subscripti
 	return sub, nil
 }
 
-func (s *Service) Create(ctx context.Context, sub domain.Subscription) error {
+func (s *Service) Create(
+	ctx context.Context,
+	sub domain.Subscription,
+	sendFunc func(chatId int64) error,
+) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// kill existing subscription goroutine if exists
+	// kill running subscription goroutine if exists
 	exitChanOld, ok := s.runningSubscriptions[sub.ChatId]
 	if ok {
 		exitChanOld <- struct{}{}
+		close(exitChanOld)
 	}
 
 	err := s.repo.Create(ctx, sub)
@@ -109,16 +154,23 @@ func (s *Service) Create(ctx context.Context, sub domain.Subscription) error {
 		return errors.Wrap(err, "can not create subscription")
 	}
 
-	exitChan := make(chan struct{})
+	exitChan := make(chan struct{}, 1)
 
-	// todo: start goroutine
+	workerInput := &StartWorkerInput{
+		ChatID:   sub.ChatId,
+		ExitChan: exitChan,
+		Delay:    0,
+		Period:   sub.GetPeriodAsDuration(),
+	}
+
+	go s.startSubscription(workerInput, sendFunc)
 
 	s.runningSubscriptions[sub.ChatId] = exitChan
 
 	return nil
 }
 
-func (s *Service) Delete(ctx context.Context, chatId string) error {
+func (s *Service) Delete(ctx context.Context, chatId int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -132,7 +184,8 @@ func (s *Service) Delete(ctx context.Context, chatId string) error {
 		return errors.Wrap(err, "can not delete subscription")
 	}
 
-	exitChan <- struct{}{}
+	exitChan <- struct{}{} // stop running subscription goroutine
+	close(exitChan)
 
 	delete(s.runningSubscriptions, chatId)
 

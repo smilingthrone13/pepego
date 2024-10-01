@@ -15,7 +15,7 @@ func New(db *database.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) Get(ctx context.Context, chatId string) (sub domain.Subscription, err error) {
+func (r *Repository) Get(ctx context.Context, chatId int64) (sub domain.Subscription, err error) {
 	query := "SELECT chat_id, created_at, period FROM subscription WHERE chat_id = ?"
 	err = r.db.Conn().QueryRowContext(ctx, query, chatId).Scan(&sub.ChatId, &sub.CreatedAt, &sub.Period)
 	if err != nil {
@@ -64,7 +64,7 @@ func (r *Repository) Create(ctx context.Context, sub domain.Subscription) error 
 	return nil
 }
 
-func (r *Repository) Delete(ctx context.Context, chatId string) error {
+func (r *Repository) Delete(ctx context.Context, chatId int64) error {
 	query := "DELETE FROM subscription WHERE chat_id = ?"
 	_, err := r.db.Conn().ExecContext(ctx, query, chatId)
 	if err != nil {
