@@ -60,7 +60,7 @@ func New(cfg *config.Config) *App {
 		},
 	)
 
-	lastUsage := cache.New(cfg.GetterCooldown, 5*time.Minute)
+	lastUsage := cache.New(cfg.CommandCooldown, 5*time.Minute)
 
 	return &App{
 		cfg:       cfg,
@@ -98,23 +98,27 @@ func (a *App) Run() {
 }
 
 func (a *App) handleUpdate(update *tgbotapi.Update) {
+	if lastTime, ok := a.lastUsage.Get(fmt.Sprint(update.Message.Chat.ID)); ok {
+		waitTime := a.cfg.CommandCooldown - time.Since(lastTime.(time.Time))
+		if waitTime > 0 {
+			msgText := fmt.Sprintf("Command on cooldown for %.1f sec", waitTime.Seconds())
+			go a.handlers.General.MessageResponse(update.Message.Chat.ID, msgText)
+
+			return
+		}
+	}
+
+	a.lastUsage.Set(fmt.Sprint(update.Message.Chat.ID), time.Now(), cache.DefaultExpiration)
+
 	if update.Message == nil {
 		return
 	}
 
 	if !update.Message.IsCommand() {
+		msgText := "I can only handle listed commands in this chat!"
+		go a.handlers.General.MessageResponse(update.Message.Chat.ID, msgText)
+
 		return
-	}
-
-	if lastTime, ok := a.lastUsage.Get(fmt.Sprint(update.Message.Chat.ID)); ok {
-		waitTime := a.cfg.GetterCooldown - time.Since(lastTime.(time.Time))
-		if waitTime > 0 {
-			msgText := fmt.Sprintf("Command on cooldown for %.1f sec", waitTime.Seconds())
-
-			go a.handlers.General.MessageResponse(update.Message.Chat.ID, msgText)
-
-			return
-		}
 	}
 
 	switch update.Message.Command() {
@@ -123,17 +127,18 @@ func (a *App) handleUpdate(update *tgbotapi.Update) {
 	case "peepo":
 		ctx := context.Background()
 		go a.handlers.Image.GetImage(ctx, update.Message)
-	case "subscribe":
+	case "sub":
 		ctx := context.Background()
 		go a.handlers.Image.CreateSubscription(ctx, update.Message)
-	case "unsubscribe":
+	case "unsub":
 		ctx := context.Background()
 		go a.handlers.Image.DeleteSubscription(ctx, update.Message)
+	case "sub_info":
+		ctx := context.Background()
+		go a.handlers.Image.GetSubscription(ctx, update.Message)
 	case "help":
 		go a.handlers.General.HelpResponse(update.Message.Chat.ID)
 	default:
 		go a.handlers.General.MessageResponse(update.Message.Chat.ID, "Unknown command")
 	}
-
-	a.lastUsage.Set(fmt.Sprint(update.Message.Chat.ID), time.Now(), cache.DefaultExpiration)
 }

@@ -6,6 +6,8 @@ import (
 	"apubot/internal/service/image"
 	"apubot/internal/service/subscription"
 	"apubot/pkg/custom_errors"
+	"apubot/pkg/utils/queue"
+	"apubot/pkg/utils/time_string"
 	"context"
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -13,7 +15,7 @@ import (
 	"log"
 	"path"
 	"path/filepath"
-	"strconv"
+	"strings"
 	"time"
 )
 
@@ -72,7 +74,7 @@ func (h *Handler) GetImage(ctx context.Context, message *tgbotapi.Message) {
 }
 
 func (h *Handler) CreateSubscription(ctx context.Context, message *tgbotapi.Message) {
-	inp, err := parseAndValidateSubscriptionInput(message)
+	inp, err := h.parseAndValidateSubscriptionInput(message)
 	if err != nil {
 		msg := tgbotapi.NewMessage(message.Chat.ID, err.Error())
 		_, err = h.bot.Send(msg)
@@ -90,7 +92,43 @@ func (h *Handler) CreateSubscription(ctx context.Context, message *tgbotapi.Mess
 		return
 	}
 
-	msgText := "Subscription created successfully"
+	msgText := "Subscription created successfully!"
+	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+	_, err = h.bot.Send(msg)
+	if err != nil {
+		log.Printf("Error sending message: %v", err)
+	}
+}
+
+func (h *Handler) GetSubscription(ctx context.Context, message *tgbotapi.Message) {
+	sub, err := h.services.Subscription.Get(ctx, message.Chat.ID)
+	if err != nil {
+		msgText := "Error getting subscription :d"
+
+		var notFoundErr *custom_errors.NotFoundError
+		if errors.As(err, &notFoundErr) {
+			msgText = "No active subscription found!"
+		}
+
+		msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
+		_, err = h.bot.Send(msg)
+		if err != nil {
+			log.Printf("Error sending message: %v", err)
+		}
+
+		return
+	}
+
+	createdAt := sub.SubscribedAtAsUnixTime().String()
+	period := time_string.ShortDur(sub.PeriodAsDurationInSeconds())
+	passedIntervals := time.Since(sub.SubscribedAtAsUnixTime()) / sub.PeriodAsDurationInSeconds()
+	nextEvent := sub.SubscribedAtAsUnixTime().Add((passedIntervals + 1) * sub.PeriodAsDurationInSeconds())
+
+	msgText := "Current subscription info:\n" +
+		fmt.Sprintf("Created at: %s\n", createdAt) +
+		fmt.Sprintf("Period: %s\n", period) +
+		fmt.Sprintf("Next peepo: %s", nextEvent)
+
 	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
 	_, err = h.bot.Send(msg)
 	if err != nil {
@@ -199,12 +237,22 @@ func (h *Handler) updateFile(ctx context.Context, file domain.File, res tgbotapi
 }
 
 // sendImage is used as an injected function to subscription service
-func (h *Handler) sendImage(chatId int64) error {
+func (h *Handler) sendImage(chatId int64, q *queue.Queue) error {
 	ctx := context.Background()
 
-	file, err := h.services.Image.GetRandomFile(ctx)
-	if err != nil {
-		return err
+	var file domain.File
+	var err error
+
+	for {
+		file, err = h.services.Image.GetRandomFile(ctx)
+		if err != nil {
+			return err
+		}
+
+		// check if file is already in sent queue
+		if !q.Contains(file.Name) {
+			break
+		}
 	}
 
 	attachment, err := h.createAttachment(file, chatId)
@@ -221,20 +269,33 @@ func (h *Handler) sendImage(chatId int64) error {
 		h.updateFile(ctx, file, res)
 	}
 
+	q.Add(file.Name)
+
 	return nil
 }
 
-func parseAndValidateSubscriptionInput(message *tgbotapi.Message) (domain.Subscription, error) {
-	args := message.CommandArguments()
-	period, err := strconv.Atoi(args)
+func (h *Handler) parseAndValidateSubscriptionInput(message *tgbotapi.Message) (domain.Subscription, error) {
+	args := strings.ReplaceAll(message.CommandArguments(), " ", "")
+	period, err := time.ParseDuration(args)
 	if err != nil {
-		err = errors.New("Bad subscription period! Please enter a number between 1 and 24.")
+		errText := fmt.Sprintf(
+			"Please enter a period in format like \"1h30m25s\"! (min: %s, max: %s)",
+			time_string.ShortDur(h.cfg.MinSubscriptionPeriod),
+			time_string.ShortDur(h.cfg.MaxSubscriptionPeriod),
+		)
+		err = errors.New(errText)
 
 		return domain.Subscription{}, err
 	}
 
-	if period <= 0 || period > 24 {
-		err = errors.New("Subscription period must be between 1 and 24.")
+	if period.Seconds() < h.cfg.MinSubscriptionPeriod.Seconds() ||
+		period.Seconds() > h.cfg.MaxSubscriptionPeriod.Seconds() {
+		errText := fmt.Sprintf(
+			"Subscription period must be between %s and %s!",
+			time_string.ShortDur(h.cfg.MinSubscriptionPeriod),
+			time_string.ShortDur(h.cfg.MaxSubscriptionPeriod),
+		)
+		err = errors.New(errText)
 
 		return domain.Subscription{}, err
 	}
@@ -242,7 +303,7 @@ func parseAndValidateSubscriptionInput(message *tgbotapi.Message) (domain.Subscr
 	inp := domain.Subscription{
 		ChatId:    message.Chat.ID,
 		CreatedAt: time.Now().Unix(),
-		Period:    period,
+		Period:    int(period.Seconds()),
 	}
 
 	return inp, nil

@@ -4,6 +4,7 @@ import (
 	"apubot/internal/config"
 	"apubot/internal/domain"
 	"apubot/pkg/custom_errors"
+	"apubot/pkg/utils/queue"
 	"context"
 	"github.com/pkg/errors"
 	"log"
@@ -43,16 +44,16 @@ func (s *Service) getAllFromDB(ctx context.Context) (subs []domain.Subscription,
 func (s *Service) startWorker(
 	sub domain.Subscription,
 	exitChan chan struct{},
-	sendFunc func(chatId int64) error,
+	sendFunc func(chatId int64, q *queue.Queue) error,
 ) {
-	passedIntervals := time.Since(sub.GetSubscribedAtAsUnixTime()) / sub.GetPeriodAsDuration()
-	nextRun := sub.GetSubscribedAtAsUnixTime().Add((passedIntervals + 1) * sub.GetPeriodAsDuration())
+	passedIntervals := time.Since(sub.SubscribedAtAsUnixTime()) / sub.PeriodAsDurationInSeconds()
+	nextRun := sub.SubscribedAtAsUnixTime().Add((passedIntervals + 1) * sub.PeriodAsDurationInSeconds())
 
 	workerInput := &StartWorkerInput{
 		ChatID:   sub.ChatId,
 		ExitChan: exitChan,
 		Delay:    time.Until(nextRun),
-		Period:   sub.GetPeriodAsDuration(),
+		Period:   sub.PeriodAsDurationInSeconds(),
 	}
 
 	go s.startSubscription(workerInput, sendFunc)
@@ -60,30 +61,51 @@ func (s *Service) startWorker(
 
 func (s *Service) startSubscription(
 	inp *StartWorkerInput,
-	sendFunc func(chatId int64) error,
+	sendFunc func(chatId int64, q *queue.Queue) error,
 ) {
-	time.Sleep(inp.Delay) // wait to next scheduled event
-
-	// todo: add sent pictures tracker to avoid duplicates, get ids from sendFunc
+	failCount := 0
+	timeout := inp.Delay // initial delay before next scheduled event
+	q := queue.NewQueue(s.cfg.LastSentQueueSize)
 
 	for {
-		start := time.Now()
-		err := sendFunc(inp.ChatID)
-		if err != nil {
-			log.Printf("can not send scheduled message from goroutine: %v\n", err)
-		}
-
 		select {
-		case <-time.After(inp.Period - time.Since(start)):
+		case <-time.After(timeout):
 		case <-inp.ExitChan:
 			return
 		}
+
+		start := time.Now()
+
+		if failCount >= s.cfg.MaxRetries {
+			log.Printf("Max retries reached for chat %d, auto-deleting subscription!", inp.ChatID)
+			err := s.Delete(context.Background(), inp.ChatID)
+			if err != nil {
+				log.Printf("Can not auto-delete subscription %d: %v", inp.ChatID, err)
+			}
+
+			return
+		}
+
+		err := sendFunc(inp.ChatID, q)
+		if err != nil {
+			failCount++
+			timeout = s.cfg.MinSubscriptionPeriod / time.Duration(s.cfg.MaxRetries+1) // timeout for retry
+			log.Printf(
+				"(%d/%d) Can not send scheduled message to chat %d: %v",
+				failCount, s.cfg.MaxRetries, inp.ChatID, err,
+			)
+
+			continue
+		}
+
+		timeout = inp.Period - time.Since(start) // schedule next event
+		failCount = 0
 	}
 }
 
 func (s *Service) RescheduleExisting(
 	ctx context.Context,
-	sendFunc func(chatId int64) error,
+	sendFunc func(chatId int64, q *queue.Queue) error,
 ) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -134,7 +156,7 @@ func (s *Service) Get(ctx context.Context, chatId int64) (sub domain.Subscriptio
 func (s *Service) Create(
 	ctx context.Context,
 	sub domain.Subscription,
-	sendFunc func(chatId int64) error,
+	sendFunc func(chatId int64, q *queue.Queue) error,
 ) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -157,7 +179,7 @@ func (s *Service) Create(
 		ChatID:   sub.ChatId,
 		ExitChan: exitChan,
 		Delay:    time.Duration(1) * time.Second,
-		Period:   sub.GetPeriodAsDuration(),
+		Period:   sub.PeriodAsDurationInSeconds(),
 	}
 
 	go s.startSubscription(workerInput, sendFunc)

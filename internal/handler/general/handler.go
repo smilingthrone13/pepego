@@ -37,11 +37,12 @@ func (h *Handler) StartResponse(chatID int64) {
 }
 
 func (h *Handler) HelpResponse(chatID int64) {
-	msgText := `Command list help:
-/peepo - Get random peepo picture;
-/subscribe <period> - Subscribe to receive peepo pictures every <period> hours (accepted range is 1-24);
-/unsubscribe - Unsubscribe from receiving peepo pictures.
-`
+	msgText := "Command list help:\n" +
+		"/peepo - Get random peepo picture;\n" +
+		"/sub <period> - Subscribe to receive peepo pictures. Example: \"/sub 1h30m20s\";\n" +
+		"/sub_info - Get info about current subscription;\n" +
+		"/unsub - Unsubscribe from receiving peepo pictures;\n" +
+		"/help - Get this list."
 
 	_, err := h.bot.Send(tgbotapi.NewMessage(chatID, msgText))
 	if err != nil {

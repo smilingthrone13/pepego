@@ -8,10 +8,10 @@ type Subscription struct {
 	Period    int
 }
 
-func (s Subscription) GetSubscribedAtAsUnixTime() time.Time {
+func (s Subscription) SubscribedAtAsUnixTime() time.Time {
 	return time.Unix(s.CreatedAt, 0)
 }
 
-func (s Subscription) GetPeriodAsDuration() time.Duration {
-	return time.Duration(s.Period) * time.Second // todo: switch to hours
+func (s Subscription) PeriodAsDurationInSeconds() time.Duration {
+	return time.Duration(s.Period) * time.Second
 }

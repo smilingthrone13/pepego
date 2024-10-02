@@ -1,4 +1,8 @@
 is_debug: true
-getter_cooldown: 2s
+command_cooldown: 2s
 request_timeout: 5s
+last_sent_queue_size: 10
+min_subscription_period: 10m
+max_subscription_period: 24h
+max_retries: 3
 images_dir_path: "./resources/images"

@@ -8,5 +8,3 @@ type StartWorkerInput struct {
 	Delay    time.Duration
 	Period   time.Duration
 }
-
-// todo: add last used pic queue
