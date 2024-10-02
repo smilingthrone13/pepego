@@ -63,12 +63,6 @@ func (h *Handler) GetImage(ctx context.Context, message *tgbotapi.Message) {
 	if err != nil {
 		log.Printf("Error sending attachment: %v", err)
 
-		msg := tgbotapi.NewMessage(message.Chat.ID, "Can not send an image monkaS")
-		_, err = h.bot.Send(msg)
-		if err != nil {
-			log.Printf("Error sending message: %v", err)
-		}
-
 		return
 	}
 

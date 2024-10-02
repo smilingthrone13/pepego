@@ -66,20 +66,17 @@ func (s *Service) startSubscription(
 
 	// todo: add sent pictures tracker to avoid duplicates, get ids from sendFunc
 
-	err := sendFunc(inp.ChatID)
-	if err != nil {
-		log.Printf("can not send scheduled message from goroutine: %v\n", err)
-	}
-
 	for {
+		start := time.Now()
+		err := sendFunc(inp.ChatID)
+		if err != nil {
+			log.Printf("can not send scheduled message from goroutine: %v\n", err)
+		}
+
 		select {
+		case <-time.After(inp.Period - time.Since(start)):
 		case <-inp.ExitChan:
 			return
-		case <-time.After(inp.Period):
-			err := sendFunc(inp.ChatID)
-			if err != nil {
-				log.Printf("can not send scheduled message from goroutine: %v\n", err)
-			}
 		}
 	}
 }
@@ -159,7 +156,7 @@ func (s *Service) Create(
 	workerInput := &StartWorkerInput{
 		ChatID:   sub.ChatId,
 		ExitChan: exitChan,
-		Delay:    0,
+		Delay:    time.Duration(1) * time.Second,
 		Period:   sub.GetPeriodAsDuration(),
 	}
 

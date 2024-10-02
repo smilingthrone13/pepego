@@ -27,6 +27,15 @@ func (h *Handler) MessageResponse(chatID int64, message string) {
 	}
 }
 
+func (h *Handler) StartResponse(chatID int64) {
+	msgText := "Welcome to peepobot. Now you can use any available command."
+
+	_, err := h.bot.Send(tgbotapi.NewMessage(chatID, msgText))
+	if err != nil {
+		log.Printf("Error sending message: %v", err)
+	}
+}
+
 func (h *Handler) HelpResponse(chatID int64) {
 	msgText := `Command list help:
 /peepo - Get random peepo picture;

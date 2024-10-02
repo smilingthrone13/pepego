@@ -19,8 +19,8 @@ import (
 
 type App struct {
 	cfg       *config.Config
-	bot       *tgbotapi.BotAPI
 	db        *database.DB
+	bot       *tgbotapi.BotAPI
 	handlers  *handler.Handlers
 	lastUsage *cache.Cache
 }
@@ -88,11 +88,7 @@ func (a *App) Run() {
 			log.Println("Stopping bot...")
 
 			a.bot.StopReceivingUpdates()
-
-			err := a.db.Close()
-			if err != nil {
-				log.Printf("Error closing database conn: %v\n", err)
-			}
+			_ = a.db.Close()
 
 			log.Println("Bot gracefully stopped!")
 
@@ -123,8 +119,7 @@ func (a *App) handleUpdate(update *tgbotapi.Update) {
 
 	switch update.Message.Command() {
 	case "start":
-		msgText := "Welcome to peepobot. Now you can use any available command."
-		go a.handlers.General.MessageResponse(update.Message.Chat.ID, msgText)
+		go a.handlers.General.StartResponse(update.Message.Chat.ID)
 	case "peepo":
 		ctx := context.Background()
 		go a.handlers.Image.GetImage(ctx, update.Message)
