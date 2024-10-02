@@ -4,6 +4,7 @@ import (
 	"apubot/internal/config"
 	"apubot/internal/infrastructure/repository"
 	"apubot/internal/service/image"
+	"apubot/internal/service/subscription"
 )
 
 type (
@@ -13,12 +14,14 @@ type (
 	}
 
 	Services struct {
-		Image *image.Service
+		Image        *image.Service
+		Subscription *subscription.Service
 	}
 )
 
 func New(p *InitParams) *Services {
 	return &Services{
-		Image: image.New(p.Config, p.Repositories.Image),
+		Image:        image.New(p.Config, p.Repositories.Image),
+		Subscription: subscription.New(p.Config, p.Repositories.Subscription),
 	}
 }

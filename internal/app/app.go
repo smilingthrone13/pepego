@@ -19,12 +19,20 @@ import (
 
 type App struct {
 	cfg       *config.Config
+	db        *database.DB
 	bot       *tgbotapi.BotAPI
 	handlers  *handler.Handlers
 	lastUsage *cache.Cache
 }
 
 func New(cfg *config.Config) *App {
+	bot, err := tgbotapi.NewBotAPI(cfg.ApiKey)
+	if err != nil {
+		log.Fatalf("Error creating bot: %v", err)
+	}
+
+	bot.Debug = cfg.IsDebug
+
 	db, err := database.New(cfg)
 	if err != nil {
 		log.Fatalf("Error connecting to database: %v", err)
@@ -47,22 +55,17 @@ func New(cfg *config.Config) *App {
 	handlers := handler.New(
 		&handler.InitParams{
 			Config:   cfg,
+			Bot:      bot,
 			Services: services,
 		},
 	)
 
-	bot, err := tgbotapi.NewBotAPI(cfg.ApiKey)
-	if err != nil {
-		log.Fatalf("Error creating bot: %v", err)
-	}
-
-	bot.Debug = cfg.IsDebug
-
-	lastUsage := cache.New(cfg.GetterCooldown, 5*time.Minute)
+	lastUsage := cache.New(cfg.CommandCooldown, 5*time.Minute)
 
 	return &App{
 		cfg:       cfg,
 		bot:       bot,
+		db:        db,
 		handlers:  handlers,
 		lastUsage: lastUsage,
 	}
@@ -83,7 +86,11 @@ func (a *App) Run() {
 			a.handleUpdate(&update)
 		case <-c:
 			log.Println("Stopping bot...")
+
 			a.bot.StopReceivingUpdates()
+			_ = a.db.Close()
+
+			log.Println("Bot gracefully stopped!")
 
 			return
 		}
@@ -91,46 +98,47 @@ func (a *App) Run() {
 }
 
 func (a *App) handleUpdate(update *tgbotapi.Update) {
-	var err error
+	if lastTime, ok := a.lastUsage.Get(fmt.Sprint(update.Message.Chat.ID)); ok {
+		waitTime := a.cfg.CommandCooldown - time.Since(lastTime.(time.Time))
+		if waitTime > 0 {
+			msgText := fmt.Sprintf("Command on cooldown for %.1f sec", waitTime.Seconds())
+			go a.handlers.General.MessageResponse(update.Message.Chat.ID, msgText)
+
+			return
+		}
+	}
+
+	a.lastUsage.Set(fmt.Sprint(update.Message.Chat.ID), time.Now(), cache.DefaultExpiration)
 
 	if update.Message == nil {
 		return
 	}
 
 	if !update.Message.IsCommand() {
+		msgText := "I can only handle listed commands in this chat!"
+		go a.handlers.General.MessageResponse(update.Message.Chat.ID, msgText)
+
 		return
-	}
-
-	if lastTime, ok := a.lastUsage.Get(fmt.Sprint(update.Message.Chat.ID)); ok {
-		waitTime := a.cfg.GetterCooldown - time.Since(lastTime.(time.Time))
-		if waitTime > 0 {
-			msg := tgbotapi.NewMessage(
-				update.Message.Chat.ID,
-				fmt.Sprintf("Command on cooldown for %v sec", int(waitTime.Seconds())),
-			)
-
-			_, err := a.bot.Send(msg)
-			if err != nil {
-				log.Printf("Error sending message: %v", err)
-			}
-
-			return
-		}
 	}
 
 	switch update.Message.Command() {
 	case "start":
-		msgText := "Welcome to peepobot. Now you can use any available command."
-		_, err = a.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, msgText))
+		go a.handlers.General.StartResponse(update.Message.Chat.ID)
 	case "peepo":
-		ctx := context.Background() // todo: add context timeout?
-		go a.handlers.Getter.HandleGetCommand(ctx, a.bot, update.Message)
+		ctx := context.Background()
+		go a.handlers.Image.GetImage(ctx, update.Message)
+	case "sub":
+		ctx := context.Background()
+		go a.handlers.Image.CreateSubscription(ctx, update.Message)
+	case "unsub":
+		ctx := context.Background()
+		go a.handlers.Image.DeleteSubscription(ctx, update.Message)
+	case "sub_info":
+		ctx := context.Background()
+		go a.handlers.Image.GetSubscription(ctx, update.Message)
+	case "help":
+		go a.handlers.General.HelpResponse(update.Message.Chat.ID)
 	default:
-		_, err = a.bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "Unknown command"))
+		go a.handlers.General.MessageResponse(update.Message.Chat.ID, "Unknown command")
 	}
-	if err != nil {
-		log.Printf("Error sending message: %v", err)
-	}
-
-	a.lastUsage.Set(fmt.Sprint(update.Message.Chat.ID), time.Now(), cache.DefaultExpiration)
 }
