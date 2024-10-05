@@ -87,18 +87,17 @@ func (s *Service) startSubscription(
 		}
 
 		err := sendFunc(inp.ChatID, q)
+		timeout = inp.Period - time.Since(start) // schedule next event
 		if err != nil {
 			failCount++
-			timeout = s.cfg.MinSubscriptionPeriod / time.Duration(s.cfg.MaxRetries+1) // timeout for retry
 			log.Printf(
-				"(%d/%d) Can not send scheduled message to chat %d: %v",
-				failCount, s.cfg.MaxRetries, inp.ChatID, err,
+				"Can not send scheduled message to chat %d (%d/%d): %v",
+				inp.ChatID, failCount, s.cfg.MaxRetries, err,
 			)
 
 			continue
 		}
 
-		timeout = inp.Period - time.Since(start) // schedule next event
 		failCount = 0
 	}
 }

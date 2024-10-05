@@ -11,36 +11,36 @@ import (
 )
 
 const (
-	DefaultCommandCooldown       = time.Second * 5
-	DefaultRequestTimeout        = time.Second * 5
-	DefaultLastSentQueueSize     = 10
-	DefaultMaxRetries            = 3
-	DefaultMinSubscriptionPeriod = time.Minute * 15
-	DefaultMaxSubscriptionPeriod = time.Hour * 24
+	DefaultCommandCooldown         = time.Second * 5
+	DefaultRequestTimeout          = time.Second * 5
+	DefaultLastSentQueueSize       = 10
+	DefaultMaxRetries              = 3
+	DefaultMinSubscriptionInterval = time.Minute * 15
+	DefaultMaxSubscriptionInterval = time.Hour * 24
 )
 
 type Config struct {
-	IsDebug               bool          `yaml:"is_debug"`
-	ApiKey                string        `yaml:"api_key"`
-	DBPath                string        `yaml:"db_path"`
-	CommandCooldown       time.Duration `yaml:"command_cooldown"`
-	ImagesDirPath         string        `yaml:"images_dir_path"`
-	RequestTimeout        time.Duration `yaml:"request_timeout"`
-	LastSentQueueSize     int           `yaml:"last_sent_queue_size"`
-	MaxRetries            int           `yaml:"max_retries"`
-	MinSubscriptionPeriod time.Duration `yaml:"min_subscription_period"`
-	MaxSubscriptionPeriod time.Duration `yaml:"max_subscription_period"`
+	IsDebug                 bool          `yaml:"is_debug"`
+	ApiKey                  string        `yaml:"api_key"`
+	DBPath                  string        `yaml:"db_path"`
+	CommandCooldown         time.Duration `yaml:"command_cooldown"`
+	ImagesDirPath           string        `yaml:"images_dir_path"`
+	RequestTimeout          time.Duration `yaml:"request_timeout"`
+	LastSentQueueSize       int           `yaml:"last_sent_queue_size"`
+	MaxRetries              int           `yaml:"max_retries"`
+	MinSubscriptionInterval time.Duration `yaml:"min_subscription_interval"`
+	MaxSubscriptionInterval time.Duration `yaml:"max_subscription_interval"`
 }
 
 func NewConfig(cfgFolderPath string) (*Config, error) {
 	c := &Config{
-		IsDebug:               false,
-		CommandCooldown:       DefaultCommandCooldown,
-		RequestTimeout:        DefaultRequestTimeout,
-		LastSentQueueSize:     DefaultLastSentQueueSize,
-		MaxRetries:            DefaultMaxRetries,
-		MinSubscriptionPeriod: DefaultMinSubscriptionPeriod,
-		MaxSubscriptionPeriod: DefaultMaxSubscriptionPeriod,
+		IsDebug:                 false,
+		CommandCooldown:         DefaultCommandCooldown,
+		RequestTimeout:          DefaultRequestTimeout,
+		LastSentQueueSize:       DefaultLastSentQueueSize,
+		MaxRetries:              DefaultMaxRetries,
+		MinSubscriptionInterval: DefaultMinSubscriptionInterval,
+		MaxSubscriptionInterval: DefaultMaxSubscriptionInterval,
 	}
 
 	cfgPath := path.Join(cfgFolderPath, "config.yaml")
@@ -52,8 +52,8 @@ func NewConfig(cfgFolderPath string) (*Config, error) {
 		return nil, err
 	}
 
-	c.MaxSubscriptionPeriod = c.MaxSubscriptionPeriod.Round(time.Second)
-	c.MinSubscriptionPeriod = c.MinSubscriptionPeriod.Round(time.Second)
+	c.MaxSubscriptionInterval = c.MaxSubscriptionInterval.Round(time.Second)
+	c.MinSubscriptionInterval = c.MinSubscriptionInterval.Round(time.Second)
 
 	envFileName := "prod.env"
 	if c.IsDebug {

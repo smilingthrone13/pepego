@@ -38,10 +38,10 @@ func (h *Handler) StartResponse(chatID int64) {
 
 func (h *Handler) HelpResponse(chatID int64) {
 	msgText := "Command list help:\n" +
-		"/peepo - Get random peepo picture;\n" +
-		"/sub <period> - Subscribe to receive peepo pictures. Example: \"/sub 1h30m20s\";\n" +
+		"/peepo - Get random picture;\n" +
+		"/sub - Subscribe to receive pictures periodically;\n" +
 		"/sub_info - Get info about current subscription;\n" +
-		"/unsub - Unsubscribe from receiving peepo pictures;\n" +
+		"/unsub - Drop current subscription;\n" +
 		"/help - Get this list."
 
 	_, err := h.bot.Send(tgbotapi.NewMessage(chatID, msgText))

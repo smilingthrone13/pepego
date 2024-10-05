@@ -2,7 +2,7 @@ is_debug: true
 command_cooldown: 2s
 request_timeout: 5s
 last_sent_queue_size: 10
-min_subscription_period: 10m
-max_subscription_period: 24h
-max_retries: 3
+min_subscription_interval: 10m
+max_subscription_interval: 24h
+max_retries: 5 # number of retries before dropping the subscription
 images_dir_path: "./resources/images"
