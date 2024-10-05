@@ -73,7 +73,7 @@ func (h *Handler) GetImage(ctx context.Context, message *tgbotapi.Message) {
 	}
 }
 
-func (h *Handler) CreateSubscription(ctx context.Context, message *tgbotapi.Message) {
+func (h *Handler) CreateSubscription(ctx context.Context, message *tgbotapi.Message) error {
 	inp, err := h.parseAndValidateSubscriptionInput(message)
 	if err != nil {
 		msg := tgbotapi.NewMessage(message.Chat.ID, err.Error())
@@ -82,14 +82,14 @@ func (h *Handler) CreateSubscription(ctx context.Context, message *tgbotapi.Mess
 			log.Printf("Error sending message: %v", err)
 		}
 
-		return
+		return err
 	}
 
 	err = h.services.Subscription.Create(ctx, inp, h.sendImage)
 	if err != nil {
 		log.Printf("Error creating subscription: %v", err)
 
-		return
+		return err
 	}
 
 	msgText := "Subscription created successfully!"
@@ -97,7 +97,11 @@ func (h *Handler) CreateSubscription(ctx context.Context, message *tgbotapi.Mess
 	_, err = h.bot.Send(msg)
 	if err != nil {
 		log.Printf("Error sending message: %v", err)
+
+		return err
 	}
+
+	return nil
 }
 
 func (h *Handler) GetSubscription(ctx context.Context, message *tgbotapi.Message) {
@@ -275,25 +279,28 @@ func (h *Handler) sendImage(chatId int64, q *queue.Queue) error {
 }
 
 func (h *Handler) parseAndValidateSubscriptionInput(message *tgbotapi.Message) (domain.Subscription, error) {
-	args := strings.ReplaceAll(message.CommandArguments(), " ", "")
-	period, err := time.ParseDuration(args)
+	rawMsg := strings.ReplaceAll(message.Text, " ", "")
+	rawMsg = strings.ToLower(rawMsg)
+
+	period, err := time.ParseDuration(rawMsg)
 	if err != nil {
-		errText := fmt.Sprintf(
-			"Please enter a period in format like \"1h30m25s\"! (min: %s, max: %s)",
-			time_string.ShortDur(h.cfg.MinSubscriptionPeriod),
-			time_string.ShortDur(h.cfg.MaxSubscriptionPeriod),
-		)
+		errText := "Please enter a period in format like 1h30m\n" +
+			fmt.Sprintf(
+				"Hint: minimum: %s, maximun: %s",
+				time_string.ShortDur(h.cfg.MinSubscriptionInterval),
+				time_string.ShortDur(h.cfg.MaxSubscriptionInterval),
+			)
 		err = errors.New(errText)
 
 		return domain.Subscription{}, err
 	}
 
-	if period.Seconds() < h.cfg.MinSubscriptionPeriod.Seconds() ||
-		period.Seconds() > h.cfg.MaxSubscriptionPeriod.Seconds() {
+	if period.Seconds() < h.cfg.MinSubscriptionInterval.Seconds() ||
+		period.Seconds() > h.cfg.MaxSubscriptionInterval.Seconds() {
 		errText := fmt.Sprintf(
 			"Subscription period must be between %s and %s!",
-			time_string.ShortDur(h.cfg.MinSubscriptionPeriod),
-			time_string.ShortDur(h.cfg.MaxSubscriptionPeriod),
+			time_string.ShortDur(h.cfg.MinSubscriptionInterval),
+			time_string.ShortDur(h.cfg.MaxSubscriptionInterval),
 		)
 		err = errors.New(errText)
 
