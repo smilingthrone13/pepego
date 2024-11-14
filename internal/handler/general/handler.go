@@ -2,50 +2,43 @@ package general
 
 import (
 	"apubot/internal/config"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"log"
 )
 
 type (
+	botApi interface {
+		SendMessage(chatID int64, message string)
+	}
+
 	Handler struct {
 		cfg *config.Config
-		bot *tgbotapi.BotAPI
+		api botApi
 	}
 )
 
-func New(cfg *config.Config, bot *tgbotapi.BotAPI) *Handler {
+func New(cfg *config.Config, botAPI botApi) *Handler {
 	return &Handler{
 		cfg: cfg,
-		bot: bot,
+		api: botAPI,
 	}
 }
 
 func (h *Handler) MessageResponse(chatID int64, message string) {
-	_, err := h.bot.Send(tgbotapi.NewMessage(chatID, message))
-	if err != nil {
-		log.Printf("Error sending message: %v", err)
-	}
+	h.api.SendMessage(chatID, message)
 }
 
 func (h *Handler) StartResponse(chatID int64) {
-	msgText := "Welcome to peepobot. Now you can use any available command."
+	message := "Welcome to peepobot. Now you can use any available command."
 
-	_, err := h.bot.Send(tgbotapi.NewMessage(chatID, msgText))
-	if err != nil {
-		log.Printf("Error sending message: %v", err)
-	}
+	h.api.SendMessage(chatID, message)
 }
 
 func (h *Handler) HelpResponse(chatID int64) {
-	msgText := "Command list help:\n" +
+	message := "Command list help:\n" +
 		"/peepo - Get random picture;\n" +
 		"/sub - Subscribe to receive pictures periodically;\n" +
 		"/sub_info - Get info about current subscription;\n" +
 		"/unsub - Drop current subscription;\n" +
 		"/help - Get this list."
 
-	_, err := h.bot.Send(tgbotapi.NewMessage(chatID, msgText))
-	if err != nil {
-		log.Printf("Error sending message: %v", err)
-	}
+	h.api.SendMessage(chatID, message)
 }

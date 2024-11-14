@@ -14,24 +14,24 @@ type DB struct {
 	conn *sql.DB
 }
 
-func New(cfg *config.Config) (*DB, error) {
+func New(cfg *config.Config) *DB {
 	conn, err := sql.Open("sqlite3", cfg.DBPath)
 	if err != nil {
-		return nil, errors.Wrap(err, "can not connect to db")
+		log.Fatalf("Error connecting to database: %v", err)
 	}
 
 	err = conn.Ping()
 	if err != nil {
-		return nil, errors.Wrap(err, "can not ping db")
+		log.Fatalf("Error connecting to database: %v", err)
 	}
 
 	migrationsDir := "./migrations"
 	err = migrationUp(cfg.DBPath, migrationsDir)
 	if err != nil {
-		return nil, errors.Wrap(err, "can not apply migrations")
+		log.Fatalf("Error connecting to database: %v", err)
 	}
 
-	return &DB{conn: conn}, nil
+	return &DB{conn: conn}
 }
 
 func (db *DB) Conn() *sql.DB {

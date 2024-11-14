@@ -19,10 +19,15 @@ import (
 	"time"
 )
 
+type botApi interface {
+	SendMessage(chatID int64, message string)
+	SendAttachment(att tgbotapi.Chattable) (res tgbotapi.Message, err error)
+}
+
 type (
 	Handler struct {
 		cfg      *config.Config
-		bot      *tgbotapi.BotAPI
+		api      botApi
 		services *Services
 	}
 	Services struct {
@@ -31,10 +36,10 @@ type (
 	}
 )
 
-func New(cfg *config.Config, bot *tgbotapi.BotAPI, services *Services) *Handler {
+func New(cfg *config.Config, botAPI botApi, services *Services) *Handler {
 	h := &Handler{
 		cfg:      cfg,
-		bot:      bot,
+		api:      botAPI,
 		services: services,
 	}
 
@@ -61,10 +66,8 @@ func (h *Handler) GetImage(ctx context.Context, message *tgbotapi.Message) {
 		return
 	}
 
-	res, err := h.bot.Send(attachment)
+	res, err := h.api.SendAttachment(attachment)
 	if err != nil {
-		log.Printf("Error sending attachment: %v", err)
-
 		return
 	}
 
@@ -76,11 +79,7 @@ func (h *Handler) GetImage(ctx context.Context, message *tgbotapi.Message) {
 func (h *Handler) CreateSubscription(ctx context.Context, message *tgbotapi.Message) error {
 	inp, err := h.parseAndValidateSubscriptionInput(message)
 	if err != nil {
-		msg := tgbotapi.NewMessage(message.Chat.ID, err.Error())
-		_, err = h.bot.Send(msg)
-		if err != nil {
-			log.Printf("Error sending message: %v", err)
-		}
+		h.api.SendMessage(message.Chat.ID, err.Error())
 
 		return err
 	}
@@ -88,18 +87,12 @@ func (h *Handler) CreateSubscription(ctx context.Context, message *tgbotapi.Mess
 	err = h.services.Subscription.Create(ctx, inp, h.sendImage)
 	if err != nil {
 		log.Printf("Error creating subscription: %v", err)
+		h.api.SendMessage(message.Chat.ID, "Error creating subscription!")
 
 		return err
 	}
 
-	msgText := "Subscription created successfully!"
-	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
-	_, err = h.bot.Send(msg)
-	if err != nil {
-		log.Printf("Error sending message: %v", err)
-
-		return err
-	}
+	h.api.SendMessage(message.Chat.ID, "Subscription created successfully!")
 
 	return nil
 }
@@ -114,11 +107,7 @@ func (h *Handler) GetSubscription(ctx context.Context, message *tgbotapi.Message
 			msgText = "No active subscription found!"
 		}
 
-		msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
-		_, err = h.bot.Send(msg)
-		if err != nil {
-			log.Printf("Error sending message: %v", err)
-		}
+		h.api.SendMessage(message.Chat.ID, msgText)
 
 		return
 	}
@@ -133,11 +122,7 @@ func (h *Handler) GetSubscription(ctx context.Context, message *tgbotapi.Message
 		fmt.Sprintf("Period: %s\n", period) +
 		fmt.Sprintf("Next peepo: %s", nextEvent)
 
-	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
-	_, err = h.bot.Send(msg)
-	if err != nil {
-		log.Printf("Error sending message: %v", err)
-	}
+	h.api.SendMessage(message.Chat.ID, msgText)
 }
 
 func (h *Handler) DeleteSubscription(ctx context.Context, message *tgbotapi.Message) {
@@ -150,33 +135,19 @@ func (h *Handler) DeleteSubscription(ctx context.Context, message *tgbotapi.Mess
 			msgText = "No active subscription found!"
 		}
 
-		msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
-		_, err = h.bot.Send(msg)
-		if err != nil {
-			log.Printf("Error sending message: %v", err)
-		}
+		h.api.SendMessage(message.Chat.ID, msgText)
 
 		return
 	}
 
 	err = h.services.Subscription.Delete(ctx, sub.ChatId)
 	if err != nil {
-		msgText := "Can not delete subscription :d"
-		msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
-		_, err = h.bot.Send(msg)
-		if err != nil {
-			log.Printf("Error sending message: %v", err)
-		}
+		h.api.SendMessage(message.Chat.ID, "Can not delete subscription :d")
 
 		return
 	}
 
-	msgText := "Subscription deleted successfully!"
-	msg := tgbotapi.NewMessage(message.Chat.ID, msgText)
-	_, err = h.bot.Send(msg)
-	if err != nil {
-		log.Printf("Error sending message: %v", err)
-	}
+	h.api.SendMessage(message.Chat.ID, "Subscription deleted successfully!")
 }
 
 func (h *Handler) createAttachment(file domain.File, chatId int64) (a tgbotapi.Chattable, err error) {
@@ -264,7 +235,7 @@ func (h *Handler) sendImage(chatId int64, q *queue.Queue) error {
 		return err
 	}
 
-	res, err := h.bot.Send(attachment)
+	res, err := h.api.SendAttachment(attachment)
 	if err != nil {
 		return err
 	}
