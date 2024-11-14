@@ -2,35 +2,41 @@ package handler
 
 import (
 	"apubot/internal/config"
-	getterG "apubot/internal/handler/general"
-	getterI "apubot/internal/handler/image"
+	generalH "apubot/internal/handler/general"
+	imageH "apubot/internal/handler/image"
+	"apubot/internal/infrastructure/webapi"
 	"apubot/internal/service"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 type (
 	InitParams struct {
 		Config   *config.Config
-		Bot      *tgbotapi.BotAPI
+		APIs     *webapi.WebAPIs
 		Services *service.Services
 	}
 
 	Handlers struct {
-		General *getterG.Handler
-		Image   *getterI.Handler
+		General *generalH.Handler
+		Image   *imageH.Handler
 	}
 )
 
 func New(p *InitParams) *Handlers {
-	return &Handlers{
-		General: getterG.New(p.Config, p.Bot),
-		Image: getterI.New(
-			p.Config,
-			p.Bot,
-			&getterI.Services{
-				Image:        p.Services.Image,
-				Subscription: p.Services.Subscription,
-			},
-		),
+	generalHandler := generalH.New(p.Config, p.APIs.TgBot)
+
+	imageHandler := imageH.New(
+		p.Config,
+		p.APIs.TgBot,
+		&imageH.Services{
+			Image:        p.Services.Image,
+			Subscription: p.Services.Subscription,
+		},
+	)
+
+	handlers := &Handlers{
+		General: generalHandler,
+		Image:   imageHandler,
 	}
+
+	return handlers
 }

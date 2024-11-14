@@ -5,10 +5,9 @@ import (
 	"apubot/internal/handler"
 	"apubot/internal/infrastructure/database"
 	"apubot/internal/infrastructure/repository"
+	"apubot/internal/infrastructure/webapi"
 	"apubot/internal/server"
 	"apubot/internal/service"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"log"
 )
 
 type App struct {
@@ -17,17 +16,9 @@ type App struct {
 }
 
 func New(cfg *config.Config) *App {
-	bot, err := tgbotapi.NewBotAPI(cfg.ApiKey)
-	if err != nil {
-		log.Fatalf("Error creating bot: %v", err)
-	}
+	webAPI := webapi.New(cfg)
 
-	bot.Debug = cfg.IsDebug
-
-	db, err := database.New(cfg)
-	if err != nil {
-		log.Fatalf("Error connecting to database: %v", err)
-	}
+	db := database.New(cfg)
 
 	repos := repository.New(
 		&repository.InitParams{
@@ -46,7 +37,7 @@ func New(cfg *config.Config) *App {
 	handlers := handler.New(
 		&handler.InitParams{
 			Config:   cfg,
-			Bot:      bot,
+			APIs:     webAPI,
 			Services: services,
 		},
 	)
@@ -54,7 +45,7 @@ func New(cfg *config.Config) *App {
 	s := server.New(
 		&server.InitParams{
 			Config:   cfg,
-			Bot:      bot,
+			Api:      webAPI.TgBot,
 			Handlers: handlers,
 		},
 	)

@@ -26,7 +26,6 @@ func New(cfg *config.Config, repo SubscriptionRepository) *Service {
 		cfg:                  cfg,
 		repo:                 repo,
 		runningSubscriptions: make(map[int64]chan struct{}),
-		mu:                   sync.RWMutex{},
 	}
 
 	return service

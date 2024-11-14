@@ -7,7 +7,6 @@ import (
 	"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/patrickmn/go-cache"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -23,24 +22,31 @@ const (
 	HelpCommand             = "help"
 )
 
-type Server struct {
-	cfg       *config.Config
-	bot       *tgbotapi.BotAPI
-	handlers  *handler.Handlers
-	lastUsage *cache.Cache
-	lastCmd   *cache.Cache
+type botApi interface {
+	GetUpdatesChan() tgbotapi.UpdatesChannel
+	Shutdown()
 }
 
-type InitParams struct {
-	Config   *config.Config
-	Bot      *tgbotapi.BotAPI
-	Handlers *handler.Handlers
-}
+type (
+	InitParams struct {
+		Config   *config.Config
+		Api      botApi
+		Handlers *handler.Handlers
+	}
+
+	Server struct {
+		cfg       *config.Config
+		api       botApi
+		handlers  *handler.Handlers
+		lastUsage *cache.Cache
+		lastCmd   *cache.Cache
+	}
+)
 
 func New(p *InitParams) *Server {
 	return &Server{
 		cfg:       p.Config,
-		bot:       p.Bot,
+		api:       p.Api,
 		handlers:  p.Handlers,
 		lastUsage: cache.New(p.Config.CommandCooldown, 5*time.Minute),
 		lastCmd:   cache.New(time.Minute, 5*time.Minute),
@@ -51,21 +57,14 @@ func (s *Server) Start() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
-	updatesChan := s.bot.GetUpdatesChan(u)
+	updatesChan := s.api.GetUpdatesChan()
 
 	for {
 		select {
 		case update := <-updatesChan:
 			go s.handleUpdate(&update)
 		case <-c:
-			log.Println("Stopping bot...")
-
-			s.bot.StopReceivingUpdates()
-
-			log.Println("Bot gracefully stopped!")
+			s.api.Shutdown()
 
 			return
 		}
@@ -93,8 +92,7 @@ func (s *Server) handleMessage(message *tgbotapi.Message) {
 
 	switch lastUsedCmd {
 	case SubscribeCommand:
-		ctx := context.Background()
-		err = s.handlers.Image.CreateSubscription(ctx, message)
+		err = s.handlers.Image.CreateSubscription(context.Background(), message)
 	default:
 		msgText := "I can only handle listed commands in this chat!"
 		s.handlers.General.MessageResponse(message.Chat.ID, msgText)
@@ -122,17 +120,13 @@ func (s *Server) handleCommand(message *tgbotapi.Message) {
 	case StartCommand:
 		s.handlers.General.StartResponse(message.Chat.ID)
 	case PeepoCommand:
-		ctx := context.Background()
-		s.handlers.Image.GetImage(ctx, message)
+		s.handlers.Image.GetImage(context.Background(), message)
 	case SubscribeCommand:
-		ctx := context.Background()
-		_ = s.handlers.Image.CreateSubscription(ctx, message)
+		_ = s.handlers.Image.CreateSubscription(context.Background(), message)
 	case UnsubscribeCommand:
-		ctx := context.Background()
-		s.handlers.Image.DeleteSubscription(ctx, message)
+		s.handlers.Image.DeleteSubscription(context.Background(), message)
 	case SubscriptionInfoCommand:
-		ctx := context.Background()
-		s.handlers.Image.GetSubscription(ctx, message)
+		s.handlers.Image.GetSubscription(context.Background(), message)
 	case HelpCommand:
 		s.handlers.General.HelpResponse(message.Chat.ID)
 	default:

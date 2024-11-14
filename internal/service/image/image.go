@@ -25,7 +25,6 @@ func New(cfg *config.Config, repo ImageRepository) *Service {
 		cfg:            cfg,
 		repo:           repo,
 		availableFiles: make(map[string]string),
-		mu:             sync.RWMutex{},
 	}
 
 	err := service.updateAvailableFiles()

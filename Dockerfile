@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS build-stage
+FROM golang:1.23.3-alpine AS build-stage
 
 RUN apk update
 RUN apk upgrade
@@ -23,4 +23,4 @@ COPY --from=build-stage /app/migrations ./migrations
 
 RUN chmod +x pepobot
 
-CMD ["./pepobot"]
+ENTRYPOINT ["./pepobot"]
